@@ -1,24 +1,13 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useRef } from 'react';
 import { 
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer,
-  LineChart, Line, PieChart, Pie, Cell, AreaChart, Area
+  XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer,
+  PieChart, Pie, Cell, AreaChart, Area
 } from 'recharts';
 import { 
   Cpu, Activity, Globe, Download, Upload, AlertOctagon, FileText, 
-  Image as ImageIcon, Zap, Search, Target, TrendingUp, Ship, 
-  Settings, Bot, ChevronDown, CheckCircle2
+  Image as ImageIcon, Search, Target, TrendingUp, Ship, 
+  Bot, ChevronDown, CheckCircle2, Loader2
 } from 'lucide-react';
-
-const BRAND_COLORS = {
-  primary: '#2563eb', // Ucru Blue
-  secondary: '#7c3aed', // AI Purple
-  accent: '#10b981', // Savings Green
-  alert: '#ef4444', // Risk Red
-  warning: '#f59e0b', // Opportunity Orange
-  darkBg: '#0f172a', // Slate 900
-  cardBg: '#1e293b', // Slate 800
-  text: '#f8fafc' // Slate 50
-};
 
 const MOCK_PARTS = [
   {
@@ -80,26 +69,14 @@ const MOCK_IMPORT_YETI_DATA = [
 export default function UcruProcurementEngine() {
   const [activePart, setActivePart] = useState(MOCK_PARTS[0]);
   const [simulatedVolume, setSimulatedVolume] = useState(MOCK_PARTS[0].currentBuy);
-  const [showAlert, setShowAlert] = useState(false);
   const [activeTab, setActiveTab] = useState('digital-twin');
   const [isImporting, setIsImporting] = useState(false);
   const [autoNegotiateEnabled, setAutoNegotiateEnabled] = useState(false);
   const fileInputRef = useRef(null);
 
-  // AI Trigger: Anomaly & Opportunity Detection
-  useEffect(() => {
-    const surgeThreshold = activePart.currentBuy * 1.3; // 30% increase
-    if (simulatedVolume > surgeThreshold) {
-      setShowAlert(true);
-    } else {
-      setShowAlert(false);
-    }
-  }, [simulatedVolume, activePart]);
-
-  // Reset volume when changing parts
-  useEffect(() => {
-    setSimulatedVolume(activePart.currentBuy);
-  }, [activePart]);
+  // AI Trigger: Anomaly & Opportunity Detection (Derived State)
+  const surgeThreshold = activePart.currentBuy * 1.3; // 30% increase
+  const showAlert = simulatedVolume > surgeThreshold;
 
   const handleExport = () => {
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(activePart, null, 2));
@@ -150,7 +127,11 @@ export default function UcruProcurementEngine() {
               <select 
                 className="appearance-none bg-slate-800 border border-slate-600 text-slate-200 py-2 pl-4 pr-10 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer font-medium"
                 value={activePart.id}
-                onChange={(e) => setActivePart(MOCK_PARTS.find(p => p.id === e.target.value))}
+                onChange={(e) => {
+                  const part = MOCK_PARTS.find(p => p.id === e.target.value);
+                  setActivePart(part);
+                  setSimulatedVolume(part.currentBuy);
+                }}
               >
                 {MOCK_PARTS.map(part => (
                   <option key={part.id} value={part.id}>{part.id} - {part.name}</option>
