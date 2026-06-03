@@ -1,12 +1,14 @@
-import { useState, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { 
   XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, AreaChart, Area
+  PieChart, Pie, Cell, AreaChart, Area, BarChart, Bar, Legend
 } from 'recharts';
 import { 
   Cpu, Activity, Globe, Download, Upload, AlertOctagon, FileText, 
   Image as ImageIcon, Search, Target, TrendingUp, Ship, 
-  Bot, ChevronDown, CheckCircle2, Loader2
+  Bot, ChevronDown, CheckCircle2, Loader2, Shield, Database,
+  Layers, DollarSign, Send, Award, Scale, Users, RefreshCw,
+  Sliders, ChevronRight, AlertTriangle, Play, HelpCircle, ArrowUpRight
 } from 'lucide-react';
 
 const MOCK_PARTS = [
@@ -23,11 +25,11 @@ const MOCK_PARTS = [
     },
     currentBuy: 1250,
     unitPrice: 845.00,
-    imageUrl: 'https://images.unsplash.com/photo-1581092160562-40aa08e78837?auto=format&fit=crop&q=80&w=400&h=300',
+    shouldCostBase: 680.00,
     globalLocations: [
-      { name: 'Taiwan', value: 65, color: '#2563eb' },
-      { name: 'Mexico', value: 25, color: '#7c3aed' },
-      { name: 'Germany', value: 10, color: '#10b981' }
+      { name: 'Taiwan', value: 65, color: '#143272' },
+      { name: 'Mexico', value: 25, color: '#ed6f23' },
+      { name: 'Germany', value: 10, color: '#2c3d5a' }
     ],
     marketTrend: [
       { month: 'Jan', price: 820 }, { month: 'Feb', price: 825 },
@@ -47,17 +49,48 @@ const MOCK_PARTS = [
     },
     currentBuy: 5400,
     unitPrice: 112.50,
-    imageUrl: 'https://images.unsplash.com/photo-1537151377170-9c19a791bbea?auto=format&fit=crop&q=80&w=400&h=300',
+    shouldCostBase: 88.00,
     globalLocations: [
-      { name: 'Vietnam', value: 80, color: '#2563eb' },
-      { name: 'USA', value: 20, color: '#10b981' }
+      { name: 'Vietnam', value: 80, color: '#143272' },
+      { name: 'USA', value: 20, color: '#ed6f23' }
     ],
     marketTrend: [
       { month: 'Jan', price: 105 }, { month: 'Feb', price: 108 },
       { month: 'Mar', price: 115 }, { month: 'Apr', price: 118 },
       { month: 'May', price: 114 }, { month: 'Jun', price: 112.50 }
     ]
+  },
+  {
+    id: 'PRT-441-C',
+    name: 'Multicore Copper Cable 12AWG',
+    category: 'Electrical Connectors',
+    specs: {
+      conductor: 'Bare Copper',
+      cores: '4 Cores',
+      jacket: 'PVC Black',
+      voltageRating: '600V',
+      length: '100m Spool'
+    },
+    currentBuy: 3200,
+    unitPrice: 245.00,
+    shouldCostBase: 195.00,
+    globalLocations: [
+      { name: 'China', value: 70, color: '#143272' },
+      { name: 'Mexico', value: 30, color: '#ed6f23' }
+    ],
+    marketTrend: [
+      { month: 'Jan', price: 230 }, { month: 'Feb', price: 232 },
+      { month: 'Mar', price: 238 }, { month: 'Apr', price: 245 },
+      { month: 'May', price: 248 }, { month: 'Jun', price: 245 }
+    ]
   }
+];
+
+const MOCK_RAW_ERP_DATA = [
+  { id: 1, rawDesc: "IND SERVO MTR 5KW 400V AC IP65", cleanName: "Industrial Servo Motor 5kW", category: "Electromechanical", supplier: "TAIWAN E-MECH", confidence: 0.98, status: "Pending" },
+  { id: 2, rawDesc: "AL HOUSING PREC CNC TOL 0.005", cleanName: "Precision Aluminum Housing", category: "Machined Parts", supplier: "SZ PRECISION TECH", confidence: 0.95, status: "Pending" },
+  { id: 3, rawDesc: "COPPER CABLE 12AWG MULTICORE 100M", cleanName: "Multicore Copper Cable 12AWG", category: "Electrical Connectors", supplier: "SHENZHEN CABLE CO", confidence: 0.92, status: "Pending" },
+  { id: 4, rawDesc: "STEEL BRACKET MOUNT FLANGE V3", cleanName: "Steel Mounting Flange Bracket", category: "Hardware", supplier: "UNKOWN SUPPLIER", confidence: 0.54, status: "Anomaly" }
 ];
 
 const MOCK_IMPORT_YETI_DATA = [
@@ -66,24 +99,86 @@ const MOCK_IMPORT_YETI_DATA = [
   { date: '2026-04-28', supplier: 'Shenzhen Precision Tech Co.', buyer: 'Ucru (Internal)', portOfLading: 'Yantian, CN', portOfUnlading: 'Oakland, US', weight: '12,000 kg', hsCode: '8501.52' },
 ];
 
+const MOCK_SUPPLIERS = [
+  { name: 'Taiwan Electro-Mech Ltd.', quality: 96, delivery: 94, esg: 88, risk: 'Low', status: 'Approved' },
+  { name: 'Shenzhen Precision Tech Co.', quality: 92, delivery: 89, esg: 78, risk: 'Medium', status: 'Under Review' },
+  { name: 'Vietnam Machining Partners', quality: 88, delivery: 91, esg: 82, risk: 'Low', status: 'Approved' },
+  { name: 'Global Automation Inc.', quality: 95, delivery: 97, esg: 90, risk: 'Low', status: 'Strategic Partner' }
+];
+
 export default function UcruProcurementEngine() {
   const [activePart, setActivePart] = useState(MOCK_PARTS[0]);
   const [simulatedVolume, setSimulatedVolume] = useState(MOCK_PARTS[0].currentBuy);
-  const [activeTab, setActiveTab] = useState('digital-twin');
+  const [activeStep, setActiveStep] = useState(2); // Start at Digital Twin (Step 2)
   const [isImporting, setIsImporting] = useState(false);
   const [autoNegotiateEnabled, setAutoNegotiateEnabled] = useState(false);
-  const fileInputRef = useRef(null);
+  
+  // Step 1: Data Cleansing State
+  const [erpData, setErpData] = useState(MOCK_RAW_ERP_DATA);
+  const [isNormalizing, setIsNormalizing] = useState(false);
+  const [qualityScore, setQualityScore] = useState(78);
 
-  // AI Trigger: Anomaly & Opportunity Detection (Derived State)
-  const surgeThreshold = activePart.currentBuy * 1.3; // 30% increase
+  // Step 3: Should Cost State
+  const [materialFactor, setMaterialFactor] = useState(100);
+  const [laborFactor, setLaborFactor] = useState(100);
+  const [overheadFactor, setOverheadFactor] = useState(100);
+  const [logisticsFactor, setLogisticsFactor] = useState(100);
+
+  // Step 4: RFQ State
+  const [rfqStatus, setRfqStatus] = useState('idle'); // idle, ready, sending, published
+  
+  // Step 7: Bot Negotiation Logs State
+  const [negotiationLogs, setNegotiationLogs] = useState([]);
+  const [isNegotiating, setIsNegotiating] = useState(false);
+
+  const fileInputRef = useRef(null);
+  const terminalEndRef = useRef(null);
+
+  // Handle active part switch
+  useEffect(() => {
+    setSimulatedVolume(activePart.currentBuy);
+    setMaterialFactor(100);
+    setLaborFactor(100);
+    setOverheadFactor(100);
+    setLogisticsFactor(100);
+    setRfqStatus('idle');
+  }, [activePart]);
+
+  // Handle bot negotiation log auto scroll
+  useEffect(() => {
+    if (terminalEndRef.current) {
+      terminalEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [negotiationLogs]);
+
+  // Derived should-cost calculation
+  const shouldCostMultiplier = (
+    (materialFactor / 100) * 0.45 +
+    (laborFactor / 100) * 0.25 +
+    (overheadFactor / 100) * 0.15 +
+    (logisticsFactor / 100) * 0.15
+  );
+  
+  const currentShouldCost = activePart.shouldCostBase * shouldCostMultiplier;
+  const unitSavings = Math.max(0, activePart.unitPrice - currentShouldCost);
+  const totalAnnualSavings = unitSavings * simulatedVolume;
+  const savingsPercent = ((unitSavings / activePart.unitPrice) * 100);
+
+  // AI Trigger check (derived state)
+  const surgeThreshold = activePart.currentBuy * 1.3;
   const showAlert = simulatedVolume > surgeThreshold;
 
   const handleExport = () => {
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(activePart, null, 2));
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify({
+      activePart,
+      shouldCost: currentShouldCost,
+      annualSavings: totalAnnualSavings,
+      volume: simulatedVolume
+    }, null, 2));
     const downloadAnchorNode = document.createElement('a');
-    downloadAnchorNode.setAttribute("href",     dataStr);
-    downloadAnchorNode.setAttribute("download", `ucru_export_${activePart.id}.json`);
-    document.body.appendChild(downloadAnchorNode); // required for firefox
+    downloadAnchorNode.setAttribute("href", dataStr);
+    downloadAnchorNode.setAttribute("download", `ucru_value_report_${activePart.id}.json`);
+    document.body.appendChild(downloadAnchorNode);
     downloadAnchorNode.click();
     downloadAnchorNode.remove();
   };
@@ -97,40 +192,123 @@ export default function UcruProcurementEngine() {
       setIsImporting(true);
       setTimeout(() => {
         setIsImporting(false);
-        alert(`Successfully ingested data from ${e.target.files[0].name}. AI normalizing taxonomy...`);
+        // Add a new messy ERP record
+        const newRecord = {
+          id: erpData.length + 1,
+          rawDesc: "CNC MACHINED FLANGE AL6061 SHZ",
+          cleanName: "Machined Aluminum Flange",
+          category: "Machined Parts",
+          supplier: "PENDING SUPPLIER",
+          confidence: 0.48,
+          status: "Pending"
+        };
+        setErpData([newRecord, ...erpData]);
+        setQualityScore(72); // Lower quality score until normalized
+        setActiveStep(1); // Jump to Step 1 to show imported data
+        alert(`Ingested data from ${e.target.files[0].name}. ERP data added to Step 1 Workbench.`);
       }, 1500);
     }
   };
 
+  // Run Step 1 data normalization
+  const runNormalization = () => {
+    setIsNormalizing(true);
+    setTimeout(() => {
+      setIsNormalizing(false);
+      setErpData(erpData.map(item => ({
+        ...item,
+        status: "Cleansed",
+        confidence: Math.max(item.confidence, 0.96)
+      })));
+      setQualityScore(99);
+    }, 2000);
+  };
+
+  // Step 4: RFQ generation
+  const handleRfqGenerate = () => {
+    setRfqStatus('sending');
+    setTimeout(() => {
+      setRfqStatus('ready');
+    }, 1500);
+  };
+
+  const handleRfqPublish = () => {
+    setRfqStatus('sending');
+    setTimeout(() => {
+      setRfqStatus('published');
+    }, 2000);
+  };
+
+  // Step 7: Bot Negotiation trigger
+  const runBotNegotiation = () => {
+    if (isNegotiating) return;
+    setIsNegotiating(true);
+    setNegotiationLogs([]);
+    
+    const logs = [
+      `[AI BOT] Initiating autonomous negotiation protocol with active suppliers for ${activePart.name}...`,
+      `[AI BOT] Base Unit Price: $${activePart.unitPrice.toFixed(2)} | Target Should-Cost: $${currentShouldCost.toFixed(2)}`,
+      `[AI BOT] Supplier: Taiwan Electro-Mech Ltd. contacted via API portal.`,
+      `[TAIWAN MECH] "Standard unit price for ${simulatedVolume} units is $${activePart.unitPrice.toFixed(2)}. Best rate we can offer is $${(activePart.unitPrice * 0.96).toFixed(2)}."`,
+      `[AI BOT] Counter-proposal: Forecast volume indicates surge of ${(simulatedVolume).toLocaleString()} units. Targeting should-cost benchmark. Committing to full allocation if unit price is $${(currentShouldCost * 1.05).toFixed(2)}.`,
+      `[TAIWAN MECH] "Analyzing capacity... We can support contract discount. Best adjusted unit price is $${(currentShouldCost * 1.07).toFixed(2)} based on volume commitment."`,
+      `[AI BOT] Proposal ACCEPTED: Settled price at $${(currentShouldCost * 1.07).toFixed(2)} (Savings of $${(activePart.unitPrice - (currentShouldCost * 1.07)).toFixed(2)} per unit).`,
+      `[AI BOT] Contract draft generated. Sending to legal router. Sourcing cycle reduced by 92%.`
+    ];
+
+    let currentLogIndex = 0;
+    const interval = setInterval(() => {
+      if (currentLogIndex < logs.length) {
+        setNegotiationLogs(prev => [...prev, logs[currentLogIndex]]);
+        currentLogIndex++;
+      } else {
+        clearInterval(interval);
+        setIsNegotiating(false);
+        setAutoNegotiateEnabled(true);
+      }
+    }, 1200);
+  };
+
+  const stepsList = [
+    { num: 1, name: 'Data Cleansing & Normalization', desc: 'Dedupe, taxonomy & quality', icon: Database, bgClass: 'bg-indigo-600', color: '#6366f1' },
+    { num: 2, name: 'Digital Twin (Part Intelligence)', desc: 'Specs, cost, demand & design twin', icon: Layers, bgClass: 'bg-ucru-blue', color: '#143272' },
+    { num: 3, name: 'Should-Cost Modeling', desc: 'AI benchmarks vs market actuals', icon: DollarSign, bgClass: 'bg-violet-600', color: '#8b5cf6' },
+    { num: 4, name: 'One-Click RFQ Execution', desc: 'Auto supplier matching & RFQ package', icon: Send, bgClass: 'bg-ucru-orange', color: '#ed6f23' },
+    { num: 5, name: 'Supplier Assessment & Mining', desc: 'Quality, risk, ESG & global search', icon: Award, bgClass: 'bg-amber-600', color: '#d97706' },
+    { num: 6, name: 'Market Intelligence', desc: 'ImportYeti shipping stream & trends', icon: Globe, bgClass: 'bg-emerald-600', color: '#059669' },
+    { num: 7, name: 'Opportunity Assessment', desc: 'Volume scenario simulator & bot negotiate', icon: Target, bgClass: 'bg-cyan-600', color: '#0891b2' }
+  ];
+
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-50 font-sans selection:bg-blue-500/30">
-      {/* Hidden File Input for Import */}
+    <div className="min-h-screen bg-ucru-dark text-slate-200 font-sans selection:bg-ucru-orange/30">
+      
+      {/* Hidden File Input for ERP Import */}
       <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileChange} accept=".csv, .xlsx, .json" />
 
-      {/* TOP NAVIGATION */}
-      <header className="sticky top-0 z-50 bg-slate-900/80 backdrop-blur-md border-b border-slate-700/50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-purple-600 flex items-center justify-center shadow-lg shadow-blue-500/20">
-              <Activity className="w-6 h-6 text-white" />
-            </div>
+      {/* HEADER SECTION */}
+      <header className="sticky top-0 z-50 bg-ucru-dark/95 backdrop-blur-md border-b border-ucru-border">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
+          <div className="flex items-center space-x-4">
+            <img src="/ucru-logo.jpg" alt="UCRU Logo" className="w-12 h-12 rounded-lg border border-ucru-border object-cover" />
             <div>
-              <h1 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-400 tracking-tight">
-                UCRU ENGINE
-              </h1>
-              <p className="text-xs text-slate-400 font-medium tracking-wider uppercase">AI Procurement Value System</p>
+              <div className="flex items-center space-x-2">
+                <span className="text-2xl font-black text-ucru-orange tracking-tight">U</span>
+                <span className="text-2xl font-black text-slate-100 tracking-tight">CRU</span>
+                <span className="text-lg font-semibold text-slate-400 pl-1 border-l border-slate-700">ENGINE</span>
+              </div>
+              <p className="text-xs text-slate-400 font-medium tracking-wider uppercase">AI-Powered Procurement Value System</p>
             </div>
           </div>
 
-          <div className="flex items-center space-x-4">
+          {/* ERP Dropdowns and Actions */}
+          <div className="flex items-center space-x-3">
             <div className="relative">
               <select 
-                className="appearance-none bg-slate-800 border border-slate-600 text-slate-200 py-2 pl-4 pr-10 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer font-medium"
+                className="appearance-none bg-slate-900/80 border border-ucru-border text-slate-200 py-2 pl-4 pr-10 rounded-lg focus:outline-none focus:ring-2 focus:ring-ucru-orange cursor-pointer font-medium text-sm"
                 value={activePart.id}
                 onChange={(e) => {
                   const part = MOCK_PARTS.find(p => p.id === e.target.value);
                   setActivePart(part);
-                  setSimulatedVolume(part.currentBuy);
                 }}
               >
                 {MOCK_PARTS.map(part => (
@@ -140,370 +318,766 @@ export default function UcruProcurementEngine() {
               <ChevronDown className="absolute right-3 top-2.5 w-4 h-4 text-slate-400 pointer-events-none" />
             </div>
 
-            <button onClick={handleImportClick} className="flex items-center space-x-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-lg transition-colors text-sm font-medium">
-              {isImporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4 text-blue-400" />}
+            <button onClick={handleImportClick} className="flex items-center space-x-2 px-4 py-2 bg-slate-900 border border-ucru-border hover:bg-slate-800 rounded-lg transition-colors text-sm font-medium">
+              {isImporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4 text-ucru-orange" />}
               <span>Import ERP</span>
             </button>
-            <button onClick={handleExport} className="flex items-center space-x-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-lg transition-colors text-sm font-medium">
-              <Download className="w-4 h-4 text-green-400" />
-              <span>Export</span>
+            <button onClick={handleExport} className="flex items-center space-x-2 px-4 py-2 bg-slate-900 border border-ucru-border hover:bg-slate-800 rounded-lg transition-colors text-sm font-medium">
+              <Download className="w-4 h-4 text-emerald-400" />
+              <span>Export Report</span>
             </button>
+          </div>
+        </div>
+
+        {/* 5 Core Principles Sub-Header Banner */}
+        <div className="bg-slate-950/70 border-t border-ucru-border py-2 text-xs font-semibold text-slate-400 tracking-wider">
+          <div className="max-w-7xl mx-auto px-4 flex flex-wrap justify-between items-center gap-2">
+            <div className="flex items-center space-x-1.5"><Bot className="w-3.5 h-3.5 text-ucru-orange" /> <span>AI-DRIVEN INTELLIGENCE</span></div>
+            <div className="flex items-center space-x-1.5"><Activity className="w-3.5 h-3.5 text-indigo-400" /> <span>AUTOMATED EXECUTION</span></div>
+            <div className="flex items-center space-x-1.5"><Scale className="w-3.5 h-3.5 text-violet-400" /> <span>FACT-BASED DECISIONS</span></div>
+            <div className="flex items-center space-x-1.5"><RefreshCw className="w-3.5 h-3.5 text-emerald-400" /> <span>CONTINUOUS IMPROVEMENT</span></div>
+            <div className="flex items-center space-x-1.5"><Shield className="w-3.5 h-3.5 text-cyan-400" /> <span>RISK-AWARE SOURCING</span></div>
           </div>
         </div>
       </header>
 
-      {/* ALERT BANNER - AI TRIGGER */}
+      {/* OPPORTUNITY DETECTED ALERT BANNER */}
       {showAlert && (
-        <div className="bg-red-500/10 border-b border-red-500/20 animate-in slide-in-from-top-4 duration-300">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between">
+        <div className="bg-ucru-orange/10 border-b border-ucru-orange/30 animate-in slide-in-from-top-4 duration-300">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center space-x-3">
-              <div className="p-2 bg-red-500/20 rounded-full animate-pulse">
-                <AlertOctagon className="w-5 h-5 text-red-400" />
+              <div className="p-2 bg-ucru-orange/20 rounded-full animate-pulse">
+                <AlertOctagon className="w-5 h-5 text-ucru-orange" />
               </div>
               <div>
-                <h3 className="text-sm font-bold text-red-400 uppercase tracking-wider">AI Trigger: Opportunity Assessment</h3>
-                <p className="text-slate-200 text-sm mt-0.5">
-                  Volume surge detected ({simulatedVolume} units vs avg {activePart.currentBuy}). 
-                  <span className="font-semibold text-white"> Recommended Action: Negotiate with suppliers for tiered pricing discounts.</span>
+                <h3 className="text-xs font-bold text-ucru-orange uppercase tracking-wider">AI SOURCING ALERT: Volume Surge Detected</h3>
+                <p className="text-slate-300 text-sm mt-0.5">
+                  Volume surge detected ({simulatedVolume.toLocaleString()} units vs normal buy of {activePart.currentBuy.toLocaleString()}).
+                  <span className="font-semibold text-white"> Recommended Action: Activate Auto-Negotiator to secure tiered unit discounts.</span>
                 </p>
               </div>
             </div>
             <button 
-              onClick={() => setAutoNegotiateEnabled(true)}
+              onClick={() => {
+                setActiveStep(7);
+                runBotNegotiation();
+              }}
               className={`px-4 py-2 rounded-lg text-sm font-bold shadow-lg transition-all flex items-center space-x-2 ${
                 autoNegotiateEnabled 
-                ? 'bg-green-500/20 text-green-400 border border-green-500/50 cursor-default'
-                : 'bg-gradient-to-r from-red-600 to-orange-500 hover:from-red-500 hover:to-orange-400 text-white'
+                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/50 cursor-default'
+                : 'bg-gradient-to-r from-ucru-orange to-amber-500 hover:brightness-110 text-white'
               }`}
             >
               {autoNegotiateEnabled ? (
-                <><CheckCircle2 className="w-4 h-4" /> <span>Bot Negotiating...</span></>
+                <><CheckCircle2 className="w-4 h-4" /> <span>Bot Settled Deal!</span></>
               ) : (
-                <><Bot className="w-4 h-4" /> <span>Auto-Negotiate (Bypass Team)</span></>
+                <><Bot className="w-4 h-4" /> <span>Trigger Negotiate Bot</span></>
               )}
             </button>
           </div>
         </div>
       )}
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+      {/* MAIN LAYOUT CONTAINER */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         
-        {/* TABS */}
-        <div className="flex space-x-1 p-1 bg-slate-800/50 rounded-xl backdrop-blur-sm border border-slate-700/50 w-fit">
-          <button 
-            onClick={() => setActiveTab('digital-twin')}
-            className={`flex items-center space-x-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-all ${activeTab === 'digital-twin' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50'}`}
-          >
-            <Cpu className="w-4 h-4" />
-            <span>2. Digital Twin</span>
-          </button>
-          <button 
-            onClick={() => setActiveTab('market-intel')}
-            className={`flex items-center space-x-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-all ${activeTab === 'market-intel' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50'}`}
-          >
-            <Globe className="w-4 h-4" />
-            <span>6. Market Intelligence (ImportYeti)</span>
-          </button>
+        {/* TOP SYSTEM OVERVIEW HEADER */}
+        <div className="text-center mb-8">
+          <h2 className="text-xl font-bold tracking-tight text-white uppercase sm:text-2xl">
+            AI-Powered Procurement Value Engine
+          </h2>
+          <p className="mt-1 text-sm text-slate-400">
+            A closed-loop system that turns data into continuous, measurable value
+          </p>
         </div>
 
-        {activeTab === 'digital-twin' && (
-          <div className="space-y-6 animate-in fade-in duration-500">
-            {/* ROW 1: Part Info & PDF Viewer */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* THREE COLUMN DASHBOARD GRID */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+          
+          {/* COLUMN 1: INTERACTIVE CLOSED-LOOP DIAL (3 Columns) */}
+          <div className="lg:col-span-4 flex flex-col items-center">
+            <div className="bg-slate-900/60 border border-ucru-border rounded-2xl p-6 shadow-xl w-full flex flex-col items-center relative overflow-hidden">
+              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-6">Value Loop Navigator</h3>
               
-              {/* Part Profile */}
-              <div className="bg-slate-800 border border-slate-700 rounded-2xl p-6 shadow-xl flex flex-col">
-                <div className="flex justify-between items-start mb-4">
-                  <div>
-                    <h2 className="text-2xl font-bold text-white">{activePart.id}</h2>
-                    <p className="text-slate-400">{activePart.name}</p>
-                  </div>
-                  <span className="px-3 py-1 text-xs font-semibold bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded-full">
-                    {activePart.category}
-                  </span>
-                </div>
+              {/* Circular Dial Layout */}
+              <div className="relative w-[340px] h-[340px] flex items-center justify-center">
                 
-                <div className="relative h-48 w-full rounded-xl overflow-hidden mb-6 border border-slate-700 bg-slate-900 group">
-                  <img src={activePart.imageUrl} alt={activePart.name} className="object-cover w-full h-full opacity-80 group-hover:opacity-100 transition-opacity mix-blend-luminosity hover:mix-blend-normal" />
-                  <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-transparent to-transparent"></div>
-                  <div className="absolute bottom-3 left-3 flex items-center space-x-2 text-xs font-medium text-slate-300">
-                    <ImageIcon className="w-4 h-4" />
-                    <span>Reference Image</span>
+                {/* Dashed SVG Ring connecting steps */}
+                <svg className="absolute w-full h-full animate-spin-slow pointer-events-none" viewBox="0 0 100 100">
+                  <defs>
+                    <linearGradient id="gradient-loop" x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" stopColor="#143272" />
+                      <stop offset="50%" stopColor="#ed6f23" />
+                      <stop offset="100%" stopColor="#10b981" />
+                    </linearGradient>
+                  </defs>
+                  <circle cx="50" cy="50" r="41" fill="none" stroke="url(#gradient-loop)" strokeWidth="1" strokeDasharray="4 2" />
+                </svg>
+
+                {/* Central "Continuous Value Creation" Dial */}
+                <div className="absolute w-[160px] h-[160px] rounded-full bg-slate-950 border border-ucru-border/80 flex flex-col items-center justify-center p-3 text-center z-20 shadow-inner group hover:border-ucru-orange/50 transition-colors">
+                  <span className="text-[10px] font-black text-ucru-orange uppercase tracking-wider">Continuous Value</span>
+                  <div className="text-xl font-black text-white mt-1">
+                    ${(totalAnnualSavings / 1000).toFixed(0)}k
                   </div>
+                  <span className="text-[9px] text-slate-400 uppercase tracking-wide">Est. Savings</span>
+                  <div className="w-full border-t border-slate-800 my-1"></div>
+                  <span className="text-[8px] text-slate-500 leading-tight">Measure • Learn • Improve</span>
                 </div>
 
-                <div className="flex-grow">
-                  <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-3">Specifications</h3>
-                  <div className="grid grid-cols-2 gap-3">
-                    {Object.entries(activePart.specs).map(([key, value]) => (
-                      <div key={key} className="bg-slate-900/50 p-3 rounded-lg border border-slate-700/50">
-                        <p className="text-xs text-slate-500 capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}</p>
-                        <p className="text-sm font-medium text-slate-200 mt-1">{value}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
+                {/* 7 Circle Nodes positioned via trig formulas */}
+                {stepsList.map((step, idx) => {
+                  const angle = idx * (2 * Math.PI / 7) - Math.PI / 2;
+                  const radius = 115; // Positioning radius
+                  const x = Math.cos(angle) * radius;
+                  const y = Math.sin(angle) * radius;
+                  const StepIcon = step.icon;
+                  const isActive = activeStep === step.num;
+
+                  return (
+                    <button
+                      key={step.num}
+                      onClick={() => setActiveStep(step.num)}
+                      style={{ 
+                        left: `calc(50% + ${x}px)`, 
+                        top: `calc(50% + ${y}px)`,
+                        transform: 'translate(-50%, -50%)'
+                      }}
+                      className={`absolute w-12 h-12 rounded-full flex items-center justify-center transition-all z-30 shadow-md ${
+                        isActive 
+                        ? `${step.bgClass} text-white scale-125 ring-4 ring-offset-2 ring-offset-slate-950 ring-ucru-orange/50 shadow-ucru-orange/20`
+                        : 'bg-slate-900 border border-slate-700 hover:border-slate-400 text-slate-400 hover:text-slate-100 hover:scale-115'
+                      }`}
+                      title={step.name}
+                    >
+                      <StepIcon className="w-5 h-5" />
+                      <span className="absolute -bottom-1 -right-1 w-4 h-4 bg-slate-950 text-[9px] font-bold rounded-full border border-slate-700 text-slate-300 flex items-center justify-center">
+                        {step.num}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
 
-              {/* PDF Shop Print Viewer */}
-              <div className="lg:col-span-2 bg-slate-800 border border-slate-700 rounded-2xl shadow-xl flex flex-col overflow-hidden relative">
-                <div className="bg-slate-900 px-4 py-3 border-b border-slate-700 flex justify-between items-center">
-                  <div className="flex items-center space-x-2">
-                    <FileText className="w-5 h-5 text-blue-400" />
-                    <span className="font-medium text-slate-200">Shop_Print_{activePart.id}_v2.pdf</span>
-                  </div>
-                  <div className="flex space-x-2">
-                    <button className="p-1.5 hover:bg-slate-700 rounded text-slate-400 hover:text-white transition-colors">-</button>
-                    <span className="p-1.5 text-sm text-slate-400 font-mono">100%</span>
-                    <button className="p-1.5 hover:bg-slate-700 rounded text-slate-400 hover:text-white transition-colors">+</button>
-                  </div>
-                </div>
-                
-                {/* Mock Blueprint Background */}
-                <div className="flex-grow bg-[#0a192f] p-8 relative overflow-hidden" 
-                     style={{
-                       backgroundImage: `linear-gradient(rgba(37, 99, 235, 0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(37, 99, 235, 0.1) 1px, transparent 1px)`,
-                       backgroundSize: '20px 20px'
-                     }}>
-                  
-                  {/* Decorative Blueprint Elements */}
-                  <div className="absolute inset-8 border-2 border-blue-500/20 rounded p-4 flex flex-col justify-between">
-                    <div className="flex justify-between border-b border-blue-500/20 pb-2">
-                      <div className="text-blue-400/50 font-mono text-xs">UCRU ENGINEERING</div>
-                      <div className="text-blue-400/50 font-mono text-xs">DWG NO: {activePart.id}</div>
-                    </div>
-                    
-                    <div className="flex-grow flex items-center justify-center">
-                      <div className="w-64 h-64 border-2 border-dashed border-blue-400/30 rounded-full flex items-center justify-center relative">
-                         <div className="absolute w-full h-[2px] bg-blue-400/20"></div>
-                         <div className="absolute h-full w-[2px] bg-blue-400/20"></div>
-                         <div className="text-blue-400/40 font-mono text-xl rotate-45">ISOMETRIC VIEW</div>
-                      </div>
-                    </div>
-
-                    <div className="flex justify-between border-t border-blue-500/20 pt-2">
-                      <div className="text-blue-400/50 font-mono text-xs">SCALE: 1:1</div>
-                      <div className="text-blue-400/50 font-mono text-xs">REV: B</div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* ROW 2: Spend & Global Sourcing */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              
-              {/* Current Buy & Simulation */}
-              <div className="lg:col-span-2 bg-slate-800 border border-slate-700 rounded-2xl p-6 shadow-xl">
-                <div className="flex justify-between items-center mb-6">
-                  <h3 className="text-lg font-bold text-white flex items-center space-x-2">
-                    <Target className="w-5 h-5 text-orange-400" />
-                    <span>Spend Analytics & Simulation</span>
-                  </h3>
-                  <div className="text-right">
-                    <p className="text-sm text-slate-400">Current Unit Price</p>
-                    <p className="text-2xl font-mono text-green-400">${activePart.unitPrice.toFixed(2)}</p>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-6 mb-8">
-                  <div className="bg-slate-900/50 rounded-xl p-5 border border-slate-700/50">
-                    <p className="text-sm text-slate-400 mb-1">Current Annual Volume</p>
-                    <p className="text-3xl font-bold text-white">{activePart.currentBuy.toLocaleString()} <span className="text-sm font-normal text-slate-500">units</span></p>
-                  </div>
-                  <div className="bg-blue-500/10 rounded-xl p-5 border border-blue-500/20">
-                    <p className="text-sm text-blue-300 mb-1">Simulated Next Qtr Demand</p>
-                    <p className="text-3xl font-bold text-blue-400">{simulatedVolume.toLocaleString()} <span className="text-sm font-normal text-blue-500/50">units</span></p>
-                  </div>
-                </div>
-
-                {/* The Simulator Slider */}
-                <div className="space-y-4">
-                  <div className="flex justify-between text-sm font-medium">
-                    <span className="text-slate-400">Demand Simulation Tool</span>
-                    <span className="text-slate-400">Scale: 0 - 10,000</span>
-                  </div>
-                  <input 
-                    type="range" 
-                    min="0" 
-                    max="10000" 
-                    step="50"
-                    value={simulatedVolume}
-                    onChange={(e) => setSimulatedVolume(Number(e.target.value))}
-                    className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
-                  />
-                  <p className="text-xs text-slate-500 italic flex items-center">
-                    <Bot className="w-3 h-3 mr-1" />
-                    Drag slider to simulate demand spikes. The engine will automatically detect volume anomalies and propose supplier negotiations.
-                  </p>
-                </div>
-              </div>
-
-              {/* Global Footprint */}
-              <div className="bg-slate-800 border border-slate-700 rounded-2xl p-6 shadow-xl">
-                <h3 className="text-lg font-bold text-white mb-2">Global Sourcing</h3>
-                <p className="text-sm text-slate-400 mb-6">Am I buying anywhere else in the world?</p>
-                
-                <div className="h-48">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={activePart.globalLocations}
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={60}
-                        outerRadius={80}
-                        paddingAngle={5}
-                        dataKey="value"
-                      >
-                        {activePart.globalLocations.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.color} />
-                        ))}
-                      </Pie>
-                      <RechartsTooltip 
-                        contentStyle={{ backgroundColor: '#1e293b', borderColor: '#334155', color: '#f8fafc' }}
-                        itemStyle={{ color: '#f8fafc' }}
-                      />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </div>
-                
-                <div className="mt-4 space-y-3">
-                  {activePart.globalLocations.map(loc => (
-                    <div key={loc.name} className="flex items-center justify-between">
-                      <div className="flex items-center space-x-2">
-                        <div className="w-3 h-3 rounded-full" style={{ backgroundColor: loc.color }}></div>
-                        <span className="text-sm font-medium text-slate-300">{loc.name}</span>
-                      </div>
-                      <span className="text-sm font-bold text-white">{loc.value}%</span>
-                    </div>
-                  ))}
-                </div>
+              {/* Active Step Quick Info Block */}
+              <div className="mt-4 w-full bg-slate-950/60 p-4 rounded-xl border border-ucru-border/60 text-center">
+                <p className="text-[10px] font-bold text-ucru-orange uppercase tracking-widest">Active Step {activeStep}</p>
+                <h4 className="text-sm font-bold text-white mt-1">{stepsList[activeStep - 1].name}</h4>
+                <p className="text-xs text-slate-400 mt-1 leading-snug">{stepsList[activeStep - 1].desc}</p>
               </div>
             </div>
           </div>
-        )}
 
-        {activeTab === 'market-intel' && (
-          <div className="space-y-6 animate-in fade-in duration-500">
-            
-            {/* Macro Trends */}
-            <div className="bg-slate-800 border border-slate-700 rounded-2xl p-6 shadow-xl">
-               <h3 className="text-lg font-bold text-white flex items-center space-x-2 mb-6">
-                <TrendingUp className="w-5 h-5 text-purple-400" />
-                <span>Macro Market Cost Index for {activePart.category}</span>
-              </h3>
-              <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={activePart.marketTrend}>
-                    <defs>
-                      <linearGradient id="colorPrice" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#7c3aed" stopOpacity={0.3}/>
-                        <stop offset="95%" stopColor="#7c3aed" stopOpacity={0}/>
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
-                    <XAxis dataKey="month" stroke="#94a3b8" tick={{ fill: '#94a3b8' }} />
-                    <YAxis stroke="#94a3b8" tick={{ fill: '#94a3b8' }} domain={['dataMin - 10', 'dataMax + 10']} />
-                    <RechartsTooltip 
-                      contentStyle={{ backgroundColor: '#1e293b', borderColor: '#334155', color: '#f8fafc' }}
-                      itemStyle={{ color: '#f8fafc' }}
-                      formatter={(value) => [`$${value}`, 'Market Price']}
-                    />
-                    <Area type="monotone" dataKey="price" stroke="#7c3aed" strokeWidth={3} fillOpacity={1} fill="url(#colorPrice)" />
-                  </AreaChart>
-                </ResponsiveContainer>
+          {/* COLUMN 2: ACTIVE WORKBENCH SCREEN (5 Columns) */}
+          <div className="lg:col-span-5 flex flex-col h-full">
+            <div className="bg-slate-900 border border-ucru-border rounded-2xl shadow-xl flex-grow overflow-hidden flex flex-col min-h-[500px]">
+              
+              {/* Workbench Header */}
+              <div className="bg-slate-950/80 px-6 py-4 border-b border-ucru-border flex justify-between items-center">
+                <div className="flex items-center space-x-2">
+                  <Cpu className="w-5 h-5 text-ucru-orange" />
+                  <span className="font-bold text-white text-sm uppercase tracking-wider">Step {activeStep} Workbench</span>
+                </div>
+                <span className="px-2.5 py-0.5 text-[10px] font-bold bg-ucru-blue/40 text-ucru-orange border border-ucru-border rounded-full">
+                  LIVE WORKSPACE
+                </span>
               </div>
-              <div className="mt-4 p-4 bg-purple-500/10 border border-purple-500/20 rounded-xl">
-                <p className="text-sm text-purple-200">
-                  <span className="font-bold">AI Insight:</span> Market prices for {activePart.category} are showing an upward trend due to raw material constraints. 
-                  <span className="block mt-1">Strategic Recommendation: Lock in long-term contracts now or utilize the ImportYeti integration below to discover alternative suppliers with better capacity.</span>
+
+              {/* Workbench Active Content Panel */}
+              <div className="p-6 flex-grow flex flex-col justify-between">
+                
+                {/* STEP 1 WORKSPACE: DATA CLEANSING */}
+                {activeStep === 1 && (
+                  <div className="space-y-4 animate-in fade-in duration-300 flex-grow flex flex-col justify-between">
+                    <div>
+                      <div className="flex justify-between items-center mb-2">
+                        <h4 className="text-sm font-bold text-white uppercase tracking-wider">ERP Ingestion Stream</h4>
+                        <span className={`text-xs font-bold px-2 py-0.5 rounded ${qualityScore > 90 ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'}`}>
+                          Data Quality: {qualityScore}%
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-400 mb-4">
+                        AI-powered taxonomy mapping. Cleanse, dedupe & map standard part names and attributes automatically.
+                      </p>
+
+                      <div className="overflow-x-auto rounded-lg border border-ucru-border bg-slate-950/60 text-xs">
+                        <table className="w-full text-left text-slate-300">
+                          <thead className="bg-slate-950 text-slate-400 uppercase text-[10px]">
+                            <tr>
+                              <th className="px-3 py-2">Raw ERP Name</th>
+                              <th className="px-3 py-2">Clean Category</th>
+                              <th className="px-3 py-2 text-right">Confidence</th>
+                              <th className="px-3 py-2 text-center">Status</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {erpData.map(item => (
+                              <tr key={item.id} className="border-b border-ucru-border/30 hover:bg-slate-900/50">
+                                <td className="px-3 py-2.5 font-mono max-w-[140px] truncate" title={item.rawDesc}>{item.rawDesc}</td>
+                                <td className="px-3 py-2.5 font-medium">{item.status === 'Cleansed' ? item.cleanName : 'Unclassified'}</td>
+                                <td className="px-3 py-2.5 text-right font-mono font-medium">{(item.confidence * 100).toFixed(0)}%</td>
+                                <td className="px-3 py-2.5 text-center">
+                                  <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
+                                    item.status === 'Cleansed' 
+                                    ? 'bg-emerald-500/20 text-emerald-400' 
+                                    : item.status === 'Anomaly' 
+                                    ? 'bg-red-500/20 text-red-400' 
+                                    : 'bg-amber-500/20 text-amber-400'
+                                  }`}>
+                                    {item.status}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    <div className="pt-4 border-t border-ucru-border mt-4 flex items-center justify-between">
+                      <div className="text-xs text-slate-400">
+                        {qualityScore === 99 ? '✓ Taxonomy normalized' : '⚠️ Anomalies / Unclassified records found'}
+                      </div>
+                      <button 
+                        onClick={runNormalization}
+                        disabled={isNormalizing || qualityScore === 99}
+                        className="px-4 py-2 bg-ucru-orange hover:bg-ucru-orange/90 disabled:bg-slate-800 disabled:text-slate-500 font-bold rounded-lg text-xs text-white flex items-center space-x-2 transition-all"
+                      >
+                        {isNormalizing ? (
+                          <><Loader2 className="w-3.5 h-3.5 animate-spin" /> <span>AI Normalizing...</span></>
+                        ) : (
+                          <><Database className="w-3.5 h-3.5" /> <span>Normalize Taxonomy</span></>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* STEP 2 WORKSPACE: DIGITAL TWIN */}
+                {activeStep === 2 && (
+                  <div className="space-y-4 animate-in fade-in duration-300">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <h4 className="text-sm font-bold text-white uppercase tracking-wider">{activePart.id} Twin Profile</h4>
+                        <p className="text-xs text-slate-400">{activePart.name}</p>
+                      </div>
+                      <span className="px-2.5 py-0.5 text-[10px] font-bold bg-ucru-orange/10 text-ucru-orange border border-ucru-orange/20 rounded-full">
+                        {activePart.category}
+                      </span>
+                    </div>
+
+                    {/* Isometric Blueprint CAD Renderer */}
+                    <div className="relative h-44 w-full rounded-xl overflow-hidden border border-ucru-border bg-slate-950 p-4"
+                         style={{
+                           backgroundImage: `linear-gradient(rgba(20, 50, 114, 0.15) 1px, transparent 1px), linear-gradient(90deg, rgba(20, 50, 114, 0.15) 1px, transparent 1px)`,
+                           backgroundSize: '15px 15px'
+                         }}>
+                      <div className="absolute inset-4 border border-ucru-blue/20 rounded p-2 flex flex-col justify-between pointer-events-none">
+                        <div className="flex justify-between text-[9px] font-mono text-ucru-blue/60">
+                          <span>UCRU TWIN SCHEMA</span>
+                          <span>REV: B</span>
+                        </div>
+                        
+                        <div className="flex-grow flex items-center justify-center">
+                          <div className="w-24 h-24 border border-dashed border-ucru-orange/30 rounded-full flex items-center justify-center relative animate-pulse">
+                            <div className="absolute w-full h-[1px] bg-ucru-blue/20"></div>
+                            <div className="absolute h-full w-[1px] bg-ucru-blue/20"></div>
+                            <Activity className="w-8 h-8 text-ucru-orange/50 animate-spin-slow" />
+                          </div>
+                        </div>
+
+                        <div className="flex justify-between text-[9px] font-mono text-ucru-blue/60">
+                          <span>SCALE: 1:1</span>
+                          <span>DWG REF: {activePart.id}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Specifications List */}
+                    <div>
+                      <h5 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Technical Specs</h5>
+                      <div className="grid grid-cols-2 gap-2">
+                        {Object.entries(activePart.specs).map(([key, value]) => (
+                          <div key={key} className="bg-slate-950/40 p-2 rounded border border-ucru-border/30 text-xs">
+                            <p className="text-[9px] text-slate-500 capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}</p>
+                            <p className="font-semibold text-slate-300 mt-0.5">{value}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* STEP 3 WORKSPACE: SHOULD-COST MODELING */}
+                {activeStep === 3 && (
+                  <div className="space-y-4 animate-in fade-in duration-300">
+                    <h4 className="text-sm font-bold text-white uppercase tracking-wider">AI Should-Cost Breakdown</h4>
+                    <p className="text-xs text-slate-400">
+                      Drag factor sliders to model changes in raw material, labor, overhead, or tariff rates.
+                    </p>
+
+                    {/* Interactive Sliders */}
+                    <div className="space-y-3">
+                      <div className="space-y-1">
+                        <div className="flex justify-between text-xs font-semibold">
+                          <span className="text-slate-400">Raw Material Benchmark</span>
+                          <span className="text-ucru-orange font-mono">{materialFactor}%</span>
+                        </div>
+                        <input 
+                          type="range" min="50" max="150" value={materialFactor}
+                          onChange={(e) => setMaterialFactor(Number(e.target.value))}
+                          className="w-full h-1 bg-slate-800 rounded appearance-none cursor-pointer accent-ucru-orange"
+                        />
+                      </div>
+                      
+                      <div className="space-y-1">
+                        <div className="flex justify-between text-xs font-semibold">
+                          <span className="text-slate-400">Manufacturing Labor Rate</span>
+                          <span className="text-ucru-orange font-mono">{laborFactor}%</span>
+                        </div>
+                        <input 
+                          type="range" min="50" max="150" value={laborFactor}
+                          onChange={(e) => setLaborFactor(Number(e.target.value))}
+                          className="w-full h-1 bg-slate-800 rounded appearance-none cursor-pointer accent-ucru-orange"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <div className="flex justify-between text-xs font-semibold">
+                          <span className="text-slate-400">Supplier Overhead Margin</span>
+                          <span className="text-ucru-orange font-mono">{overheadFactor}%</span>
+                        </div>
+                        <input 
+                          type="range" min="50" max="150" value={overheadFactor}
+                          onChange={(e) => setOverheadFactor(Number(e.target.value))}
+                          className="w-full h-1 bg-slate-800 rounded appearance-none cursor-pointer accent-ucru-orange"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <div className="flex justify-between text-xs font-semibold">
+                          <span className="text-slate-400">Logistics & Tariffs</span>
+                          <span className="text-ucru-orange font-mono">{logisticsFactor}%</span>
+                        </div>
+                        <input 
+                          type="range" min="50" max="150" value={logisticsFactor}
+                          onChange={(e) => setLogisticsFactor(Number(e.target.value))}
+                          className="w-full h-1 bg-slate-800 rounded appearance-none cursor-pointer accent-ucru-orange"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Real-time Calculation Panel */}
+                    <div className="bg-slate-950 p-4 rounded-xl border border-ucru-border/80 grid grid-cols-2 gap-4">
+                      <div>
+                        <p className="text-[10px] text-slate-500 uppercase font-bold">Standard Actual Price</p>
+                        <p className="text-lg font-black text-slate-300 font-mono">${activePart.unitPrice.toFixed(2)}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-ucru-orange uppercase font-bold">AI Should-Cost Target</p>
+                        <p className="text-lg font-black text-emerald-400 font-mono">${currentShouldCost.toFixed(2)}</p>
+                      </div>
+                      <div className="col-span-2 pt-2 border-t border-slate-800 flex justify-between items-center text-xs">
+                        <span className="text-slate-400">Negotiation Savings Buffer:</span>
+                        <span className="font-bold text-emerald-400">+ {savingsPercent.toFixed(1)}%</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* STEP 4 WORKSPACE: RFQ EXECUTION */}
+                {activeStep === 4 && (
+                  <div className="space-y-4 animate-in fade-in duration-300 flex-grow flex flex-col justify-between">
+                    <div>
+                      <h4 className="text-sm font-bold text-white uppercase tracking-wider">One-Click RFQ Workspace</h4>
+                      <p className="text-xs text-slate-400 mb-4">
+                        Consolidate twin specifications, should-cost benchmarks, and quality requirements into a verified RFQ package.
+                      </p>
+
+                      {rfqStatus === 'idle' && (
+                        <div className="space-y-3 bg-slate-950/60 p-4 rounded-xl border border-ucru-border/60 text-xs">
+                          <h5 className="font-bold text-white">RFQ Payload Package Checklist:</h5>
+                          <label className="flex items-center space-x-2 text-slate-300">
+                            <input type="checkbox" defaultChecked disabled className="rounded border-slate-700 text-ucru-orange focus:ring-ucru-orange" />
+                            <span>Digital Twin CAD specifications linked ({activePart.id})</span>
+                          </label>
+                          <label className="flex items-center space-x-2 text-slate-300">
+                            <input type="checkbox" defaultChecked disabled className="rounded border-slate-700 text-ucru-orange focus:ring-ucru-orange" />
+                            <span>Should-Cost target benchmark linked (${currentShouldCost.toFixed(2)})</span>
+                          </label>
+                          <label className="flex items-center space-x-2 text-slate-300">
+                            <input type="checkbox" defaultChecked className="rounded border-slate-700 text-ucru-orange focus:ring-ucru-orange" />
+                            <span>Include dynamic volume breaks (5k, 10k, 25k)</span>
+                          </label>
+                        </div>
+                      )}
+
+                      {rfqStatus === 'ready' && (
+                        <div className="bg-emerald-500/10 p-4 rounded-xl border border-emerald-500/30 text-xs space-y-2">
+                          <h5 className="font-bold text-emerald-400 flex items-center">
+                            <CheckCircle2 className="w-4 h-4 mr-1.5" /> RFQ Package Compiled Successfully
+                          </h5>
+                          <p className="text-slate-300">
+                            Matched with <span className="font-bold text-white">3 qualified global suppliers</span>. AI score recommends Taiwanese portal dispatch first.
+                          </p>
+                          <div className="text-[10px] text-slate-400 mt-2 font-mono">
+                            FILE: UCRU_RFQ_PACK_{activePart.id}_V1.zip
+                          </div>
+                        </div>
+                      )}
+
+                      {rfqStatus === 'published' && (
+                        <div className="bg-ucru-blue/20 p-4 rounded-xl border border-ucru-border text-xs space-y-2">
+                          <h5 className="font-bold text-ucru-orange flex items-center">
+                            <Send className="w-4 h-4 mr-1.5 animate-pulse" /> RFQ Dispatched & Published
+                          </h5>
+                          <p className="text-slate-300">
+                            RFQ packet broadcasted to shortlist. Tracking live responses.
+                          </p>
+                          <div className="bg-slate-950 p-2 rounded font-mono text-[10px] text-slate-400 flex justify-between mt-2">
+                            <span>TRACKING ID: RFQ-2026-992A</span>
+                            <span className="text-emerald-400">STATUS: OPEN (0/3 QUOTES)</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="pt-4 border-t border-ucru-border flex justify-end">
+                      {rfqStatus === 'idle' && (
+                        <button 
+                          onClick={handleRfqGenerate}
+                          className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-lg text-xs flex items-center space-x-2 transition-all"
+                        >
+                          <span>Compile RFQ Package</span>
+                        </button>
+                      )}
+                      
+                      {rfqStatus === 'sending' && (
+                        <button disabled className="px-4 py-2 bg-slate-800 text-slate-500 font-bold rounded-lg text-xs flex items-center space-x-2">
+                          <Loader2 className="w-4 h-4 animate-spin text-ucru-orange" />
+                          <span>Generating RFQ...</span>
+                        </button>
+                      )}
+
+                      {rfqStatus === 'ready' && (
+                        <button 
+                          onClick={handleRfqPublish}
+                          className="px-4 py-2 bg-ucru-orange hover:bg-ucru-orange/90 text-white font-bold rounded-lg text-xs flex items-center space-x-2 transition-all shadow-lg"
+                        >
+                          <Send className="w-3.5 h-3.5" />
+                          <span>One-Click Publish RFQ</span>
+                        </button>
+                      )}
+
+                      {rfqStatus === 'published' && (
+                        <button 
+                          onClick={() => setRfqStatus('idle')}
+                          className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-lg text-xs flex items-center space-x-2 transition-all"
+                        >
+                          <span>Generate New RFQ</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* STEP 5 WORKSPACE: SUPPLIER ASSESSMENT */}
+                {activeStep === 5 && (
+                  <div className="space-y-4 animate-in fade-in duration-300 flex-grow flex flex-col justify-between">
+                    <div>
+                      <h4 className="text-sm font-bold text-white uppercase tracking-wider">Supplier Performance & Mining</h4>
+                      <p className="text-xs text-slate-400 mb-4">
+                        Evaluate supplier quality, ESG rating, and risk. Mine alternative suppliers in global logistics networks.
+                      </p>
+
+                      <div className="space-y-3">
+                        <h5 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Active Suppliers Scorecard</h5>
+                        
+                        <div className="space-y-2 text-xs">
+                          {MOCK_SUPPLIERS.map((s, idx) => (
+                            <div key={idx} className="bg-slate-950/60 p-3 rounded-lg border border-ucru-border/30 flex justify-between items-center">
+                              <div>
+                                <p className="font-bold text-slate-200">{s.name}</p>
+                                <div className="flex space-x-2 text-[10px] text-slate-500 mt-0.5">
+                                  <span>Quality: <strong className="text-slate-300">{s.quality}%</strong></span>
+                                  <span>•</span>
+                                  <span>Delivery: <strong className="text-slate-300">{s.delivery}%</strong></span>
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
+                                  s.risk === 'Low' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                                }`}>
+                                  {s.risk} Risk
+                                </span>
+                                <p className="text-[9px] text-slate-500 mt-1">ESG Rating: {s.esg}/100</p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* STEP 6 WORKSPACE: MARKET INTELLIGENCE */}
+                {activeStep === 6 && (
+                  <div className="space-y-4 animate-in fade-in duration-300 flex-grow flex flex-col justify-between">
+                    <div>
+                      <h4 className="text-sm font-bold text-white uppercase tracking-wider">Market Intelligence (ImportYeti Stream)</h4>
+                      <p className="text-xs text-slate-400 mb-3">
+                        Live shipping records mapped from Bill of Lading datasets. Discover what your competitors are importing and who they buy from.
+                      </p>
+
+                      <div className="bg-[#0e1628] rounded-xl border border-ucru-border overflow-hidden">
+                        <div className="bg-slate-950 px-4 py-2 border-b border-ucru-border text-[10px] font-bold text-slate-400 flex justify-between">
+                          <span>Live Custom Shipping Logs</span>
+                          <span className="text-ucru-orange font-mono">IMPORTYETI DISPATCH</span>
+                        </div>
+                        
+                        <div className="p-3 overflow-x-auto text-[11px]">
+                          <table className="w-full text-left text-slate-300">
+                            <thead>
+                              <tr className="border-b border-slate-800 text-[10px] text-slate-500 uppercase">
+                                <th className="pb-1.5">Supplier</th>
+                                <th className="pb-1.5">Buyer</th>
+                                <th className="pb-1.5 text-right">Weight</th>
+                                <th className="pb-1.5 text-right">Route</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {MOCK_IMPORT_YETI_DATA.map((row, idx) => (
+                                <tr key={idx} className="border-b border-slate-800/40 hover:bg-slate-900/40">
+                                  <td className="py-2 font-medium">{row.supplier}</td>
+                                  <td className="py-2 truncate max-w-[80px]">
+                                    {row.buyer.includes('Internal') 
+                                      ? <span className="text-emerald-400 font-semibold">{row.buyer}</span>
+                                      : <span className="text-ucru-orange">{row.buyer}</span>
+                                    }
+                                  </td>
+                                  <td className="py-2 text-right font-mono">{row.weight}</td>
+                                  <td className="py-2 text-right text-[10px] text-slate-500">{row.portOfLading.split(',')[0]} ➔ {row.portOfUnlading.split(',')[0]}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* STEP 7 WORKSPACE: OPPORTUNITY ASSESSMENT & SOURCING */}
+                {activeStep === 7 && (
+                  <div className="space-y-4 animate-in fade-in duration-300 flex-grow flex flex-col justify-between">
+                    <div>
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <h4 className="text-sm font-bold text-white uppercase tracking-wider">Opportunity Sourcing & Auto-Bot</h4>
+                          <p className="text-xs text-slate-400">Launch autonomous sourcing projects to capture volume discounts.</p>
+                        </div>
+                      </div>
+
+                      {/* Demand Simulation Tool */}
+                      <div className="bg-slate-950 p-4 rounded-xl border border-ucru-border/80 space-y-3 mt-2">
+                        <div className="flex justify-between text-xs font-semibold">
+                          <span className="text-slate-400">Demand Simulation Tool</span>
+                          <span className="text-ucru-orange font-mono">{(simulatedVolume).toLocaleString()} Units</span>
+                        </div>
+                        <input 
+                          type="range" min="0" max="10000" step="100" value={simulatedVolume}
+                          onChange={(e) => setSimulatedVolume(Number(e.target.value))}
+                          className="w-full h-1.5 bg-slate-800 rounded appearance-none cursor-pointer accent-ucru-orange"
+                        />
+                        <p className="text-[10px] text-slate-500 italic flex items-center leading-tight">
+                          <Bot className="w-3.5 h-3.5 text-ucru-orange mr-1 flex-shrink-0" />
+                          <span>Simulate volume spikes. Ucru Engine detects anomalies and triggers counter negotiations.</span>
+                        </p>
+                      </div>
+
+                      {/* AI Autonomous Negotiation Terminal Console */}
+                      <div className="mt-4">
+                        <h5 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">AI Negotiation Bot Terminal</h5>
+                        <div className="h-32 bg-slate-950 rounded-lg p-3 font-mono text-[10px] text-emerald-400 overflow-y-auto border border-ucru-border leading-snug space-y-1.5">
+                          {negotiationLogs.length === 0 ? (
+                            <div className="text-slate-500 flex items-center justify-center h-full flex-col">
+                              <Bot className="w-6 h-6 mb-1 text-slate-600" />
+                              <span>Bot Idle. Trigger negotiation to begin.</span>
+                            </div>
+                          ) : (
+                            negotiationLogs.map((log, index) => (
+                              <div key={index} className="border-l border-emerald-500/30 pl-2">
+                                {log}
+                              </div>
+                            ))
+                          )}
+                          <div ref={terminalEndRef}></div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="pt-4 border-t border-ucru-border flex justify-between items-center mt-3">
+                      <span className="text-[10px] text-slate-500 uppercase font-bold font-mono">STATUS: {isNegotiating ? 'NEGOTIATING' : 'IDLE'}</span>
+                      <button 
+                        onClick={runBotNegotiation}
+                        disabled={isNegotiating}
+                        className="px-4 py-2 bg-ucru-orange hover:bg-ucru-orange/90 disabled:bg-slate-800 disabled:text-slate-500 font-bold rounded-lg text-xs text-white flex items-center space-x-2 transition-all shadow-md"
+                      >
+                        {isNegotiating ? (
+                          <><Loader2 className="w-3.5 h-3.5 animate-spin" /> <span>Negotiating...</span></>
+                        ) : (
+                          <><Bot className="w-3.5 h-3.5" /> <span>Run Bot Negotiation</span></>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+              </div>
+            </div>
+          </div>
+
+          {/* COLUMN 3: VALUE OUTCOMES SIDEBAR (5 Outcomes + Feedback Loop) (5 Columns) */}
+          <div className="lg:col-span-4 space-y-6">
+            <div className="bg-slate-900 border border-ucru-border rounded-2xl p-6 shadow-xl space-y-4">
+              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest border-b border-ucru-border pb-3 flex justify-between items-center">
+                <span>Value Outcomes</span>
+                <span className="text-[9px] text-ucru-orange font-bold uppercase">KPI Mapped</span>
+              </h3>
+
+              {/* Outcomes List */}
+              <div className="space-y-4">
+                
+                {/* 1. Financial Impact */}
+                <div className="flex items-start space-x-3 bg-slate-950/40 p-3 rounded-lg border border-ucru-border/50 hover:border-ucru-orange/30 transition-all">
+                  <div className="p-2 bg-emerald-500/10 text-emerald-400 rounded-lg">
+                    <DollarSign className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-white uppercase tracking-wide">Financial Impact</h4>
+                    <p className="text-[10px] text-slate-400 mt-0.5">Higher savings & cost avoidance.</p>
+                    <div className="text-xs font-bold text-emerald-400 font-mono mt-1">
+                      ${(totalAnnualSavings / 1000).toFixed(0)}k savings forecasted
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2. Faster Cycles */}
+                <div className="flex items-start space-x-3 bg-slate-950/40 p-3 rounded-lg border border-ucru-border/50 hover:border-ucru-orange/30 transition-all">
+                  <div className="p-2 bg-ucru-orange/10 text-ucru-orange rounded-lg">
+                    <Activity className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-white uppercase tracking-wide">Faster Cycles</h4>
+                    <p className="text-[10px] text-slate-400 mt-0.5">Reduced cycle time from weeks to days.</p>
+                    <div className="text-xs font-bold text-ucru-orange font-mono mt-1">
+                      {rfqStatus === 'published' ? '0.8 Days (Cycle Time)' : '2.4 Days average speed'}
+                    </div>
+                  </div>
+                </div>
+
+                {/* 3. Margin Uplift */}
+                <div className="flex items-start space-x-3 bg-slate-950/40 p-3 rounded-lg border border-ucru-border/50 hover:border-ucru-orange/30 transition-all">
+                  <div className="p-2 bg-violet-500/10 text-violet-400 rounded-lg">
+                    <TrendingUp className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-white uppercase tracking-wide">Margin Uplift</h4>
+                    <p className="text-[10px] text-slate-400 mt-0.5">Better pricing, mix & performance.</p>
+                    <div className="text-xs font-bold text-violet-400 font-mono mt-1">
+                      +{(savingsPercent * 0.8).toFixed(1)}% margin improvement
+                    </div>
+                  </div>
+                </div>
+
+                {/* 4. Risk Reduction */}
+                <div className="flex items-start space-x-3 bg-slate-950/40 p-3 rounded-lg border border-ucru-border/50 hover:border-ucru-orange/30 transition-all">
+                  <div className="p-2 bg-cyan-500/10 text-cyan-400 rounded-lg">
+                    <Shield className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-white uppercase tracking-wide">Risk Reduction</h4>
+                    <p className="text-[10px] text-slate-400 mt-0.5">Stronger supplier compliance & continuity.</p>
+                    <div className="text-xs font-bold text-cyan-400 font-mono mt-1">
+                      94% Supply Continuity
+                    </div>
+                  </div>
+                </div>
+
+                {/* 5. Sustainability */}
+                <div className="flex items-start space-x-3 bg-slate-950/40 p-3 rounded-lg border border-ucru-border/50 hover:border-ucru-orange/30 transition-all">
+                  <div className="p-2 bg-teal-500/10 text-teal-400 rounded-lg">
+                    <Award className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-white uppercase tracking-wide">Sustainability</h4>
+                    <p className="text-[10px] text-slate-400 mt-0.5">Responsible sourcing & ESG alignment.</p>
+                    <div className="text-xs font-bold text-teal-400 font-mono mt-1">
+                      84 ESG Composite Rating
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+
+              {/* Realized Feedback Loop Graphic */}
+              <div className="bg-slate-950 p-4 rounded-xl border border-ucru-border/80 text-center relative overflow-hidden flex flex-col items-center justify-center">
+                <RefreshCw className="w-6 h-6 text-ucru-orange animate-spin-slow mb-2" />
+                <h4 className="text-[10px] font-bold text-white uppercase tracking-wider">Closed-Loop Feedback System</h4>
+                <p className="text-[9px] text-slate-400 mt-1 leading-snug">
+                  Realized outcomes are continuously fed back to refine AI data models, should-cost benchmarks, and negotiations.
                 </p>
               </div>
             </div>
-
-            {/* ImportYeti Integration Mockup */}
-            <div className="bg-[#121a2f] border border-[#233554] rounded-2xl overflow-hidden shadow-2xl relative">
-              
-              {/* ImportYeti Header */}
-              <div className="bg-[#0b1120] px-6 py-4 border-b border-[#233554] flex justify-between items-center">
-                <div className="flex items-center space-x-3">
-                  <div className="w-8 h-8 bg-blue-500 rounded flex items-center justify-center">
-                    <Ship className="w-5 h-5 text-white" />
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-bold text-white tracking-wide">ImportYeti <span className="text-blue-400 font-normal">Data Stream</span></h3>
-                    <p className="text-xs text-slate-500">Live Bill of Lading & Supplier Discovery</p>
-                  </div>
-                </div>
-                <a href="https://www.importyeti.com/" target="_blank" rel="noreferrer" className="text-xs font-medium text-blue-400 hover:text-blue-300 flex items-center border border-blue-500/30 px-3 py-1.5 rounded bg-blue-500/10 transition-colors">
-                  Open Native App <ExternalLinkIcon className="w-3 h-3 ml-1" />
-                </a>
-              </div>
-
-              {/* Data Table */}
-              <div className="p-6">
-                <div className="flex items-center space-x-4 mb-6">
-                  <div className="relative flex-grow">
-                    <Search className="absolute left-3 top-2.5 w-5 h-5 text-slate-500" />
-                    <input 
-                      type="text" 
-                      value={`HS Code: 8501.52 (Motors) OR Category: ${activePart.category}`}
-                      readOnly
-                      className="w-full bg-[#0b1120] border border-[#233554] rounded-lg py-2.5 pl-10 pr-4 text-sm text-slate-300 focus:outline-none"
-                    />
-                  </div>
-                  <button className="px-4 py-2.5 bg-[#233554] hover:bg-[#2d4263] text-white rounded-lg text-sm font-medium transition-colors">
-                    Run Custom Query
-                  </button>
-                </div>
-
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-sm text-slate-400">
-                    <thead className="text-xs text-slate-300 uppercase bg-[#0b1120]">
-                      <tr>
-                        <th className="px-4 py-3 rounded-tl-lg">Date</th>
-                        <th className="px-4 py-3">Supplier</th>
-                        <th className="px-4 py-3">Buyer (Competitor)</th>
-                        <th className="px-4 py-3">Weight</th>
-                        <th className="px-4 py-3 rounded-tr-lg">Route</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {MOCK_IMPORT_YETI_DATA.map((row, idx) => (
-                        <tr key={idx} className="border-b border-[#233554] hover:bg-[#1a2642] transition-colors">
-                          <td className="px-4 py-4 whitespace-nowrap font-mono">{row.date}</td>
-                          <td className="px-4 py-4 font-medium text-slate-200">{row.supplier}</td>
-                          <td className="px-4 py-4">
-                            {row.buyer.includes('Internal') 
-                              ? <span className="px-2 py-1 bg-green-500/10 text-green-400 rounded border border-green-500/20 text-xs">US</span>
-                              : <span className="text-orange-400">{row.buyer}</span>
-                            }
-                          </td>
-                          <td className="px-4 py-4">{row.weight}</td>
-                          <td className="px-4 py-4 text-xs text-slate-500">{row.portOfLading} ➔ {row.portOfUnlading}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-
           </div>
-        )}
+
+        </div>
 
       </main>
-    </div>
-  );
-}
 
-function ExternalLinkIcon(props) {
-  return (
-    <svg {...props} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
-      <polyline points="15 3 21 3 21 9"></polyline>
-      <line x1="10" y1="14" x2="21" y2="3"></line>
-    </svg>
+      {/* FOOTER: ENABLING FOUNDATIONS */}
+      <footer className="bg-slate-950 border-t border-ucru-border py-6 mt-12 text-center text-xs text-slate-400">
+        <div className="max-w-7xl mx-auto px-4 space-y-4">
+          <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Enabling Foundations</div>
+          
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <div className="bg-slate-900/60 p-3 rounded-lg border border-ucru-border/50 flex flex-col items-center">
+              <Database className="w-4 h-4 text-ucru-orange mb-1" />
+              <span className="font-bold text-slate-200">Cloud & Data</span>
+              <span className="text-[9px] text-slate-500 mt-0.5">Scalable • Secure • Integrated</span>
+            </div>
+
+            <div className="bg-slate-900/60 p-3 rounded-lg border border-ucru-border/50 flex flex-col items-center">
+              <Bot className="w-4 h-4 text-indigo-400 mb-1" />
+              <span className="font-bold text-slate-200">AI / ML Models</span>
+              <span className="text-[9px] text-slate-500 mt-0.5">Advanced • Adaptive • Trusted</span>
+            </div>
+
+            <div className="bg-slate-900/60 p-3 rounded-lg border border-ucru-border/50 flex flex-col items-center">
+              <Shield className="w-4 h-4 text-violet-400 mb-1" />
+              <span className="font-bold text-slate-200">Security & Gov</span>
+              <span className="text-[9px] text-slate-500 mt-0.5">Protect • Comply • Govern</span>
+            </div>
+
+            <div className="bg-slate-900/60 p-3 rounded-lg border border-ucru-border/50 flex flex-col items-center col-span-2 md:col-span-1">
+              <Users className="w-4 h-4 text-emerald-400 mb-1" />
+              <span className="font-bold text-slate-200">Collaboration</span>
+              <span className="text-[9px] text-slate-500 mt-0.5">Aligned • Enabled • Accountable</span>
+            </div>
+
+            <div className="bg-slate-900/60 p-3 rounded-lg border border-ucru-border/50 flex flex-col items-center col-span-2 md:col-span-1">
+              <TrendingUp className="w-4 h-4 text-cyan-400 mb-1" />
+              <span className="font-bold text-slate-200">Value Management</span>
+              <span className="text-[9px] text-slate-500 mt-0.5">Track • Measure • Realize</span>
+            </div>
+          </div>
+
+          <div className="border-t border-slate-900 pt-4 text-[10px] text-slate-500">
+            &copy; {new Date().getFullYear()} UCRU Engine. All rights reserved. Mapped with TheUcru Brand Colors and Assets.
+          </div>
+        </div>
+      </footer>
+
+    </div>
   );
 }
