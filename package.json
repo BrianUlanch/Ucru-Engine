@@ -1,33 +1,25 @@
 {
-  "name": "ucru-engine",
-  "private": true,
-  "version": "0.0.0",
-  "type": "module",
-  "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "lint": "eslint .",
-    "preview": "vite preview"
+  "name": "hermes-parser",
+  "version": "0.25.1",
+  "description": "A JavaScript parser built from the Hermes engine",
+  "main": "dist/index.js",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git@github.com:facebook/hermes.git"
   },
   "dependencies": {
-    "@tailwindcss/vite": "^4.3.0",
-    "autoprefixer": "^10.5.0",
-    "lucide-react": "^1.17.0",
-    "postcss": "^8.5.15",
-    "react": "^19.2.6",
-    "react-dom": "^19.2.6",
-    "recharts": "^3.8.1",
-    "tailwindcss": "^4.3.0"
+    "hermes-estree": "0.25.1"
   },
   "devDependencies": {
-    "@eslint/js": "^10.0.1",
-    "@types/react": "^19.2.14",
-    "@types/react-dom": "^19.2.3",
-    "@vitejs/plugin-react": "^6.0.1",
-    "eslint": "^10.3.0",
-    "eslint-plugin-react-hooks": "^7.1.1",
-    "eslint-plugin-react-refresh": "^0.5.2",
-    "globals": "^17.6.0",
-    "vite": "^8.0.12"
-  }
+    "@babel/parser": "7.7.4",
+    "@babel/generator": "7.7.4",
+    "@babel/types": "7.7.4",
+    "espree": "9.3.2"
+  },
+  "files": [
+    "dist",
+    "LICENCE",
+    "README.md"
+  ]
 }
